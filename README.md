@@ -1,12 +1,17 @@
 # Study Space
 
-A Vercel-ready static website for Vasudev's study materials. The page embeds the Google Drive folder directly, so the contents shown come from the live folder and update as files are added or changed in Drive.
+A Vercel-ready live study library for Vasudev, with resources collected by Dev L Kakkoth. It browses Google Drive folders inside the site and opens selected resources in an on-page preview. New Drive changes appear automatically after refresh.
 
-## Publish
+## Deploy to Vercel
 
-Import this folder into Vercel as a static site, or deploy it with the Vercel CLI. No build command or environment variables are needed.
+Import this repository as a Vercel project using the repository root. The `/api` folder contains the Vercel serverless functions; the site has no build step.
 
-## Drive access
+## Connect Google Drive
 
-The folder must be shared so that the intended visitors can view it. The embedded listing is provided by Google Drive; if embedding is blocked by browser or account settings, the page provides a link to open the folder directly.
+1. Enable the Google Drive API in Google Cloud Console and create an API key.
+2. Restrict the key to the Google Drive API. Since the key is used by a serverless function, do not use website referrer restrictions.
+3. In Vercel Project Settings → Environment Variables, add `GOOGLE_DRIVE_API_KEY` and select the deployment environments you use.
+4. Redeploy. The folder and its materials must be viewable to site visitors.
+
+The root folder and nested folders are browsed through internal site navigation. PDFs and other Drive-previewable files open in the on-page viewer; text and source files under 2 MB use the site's text viewer. Some file types may not support an embedded preview.
 
