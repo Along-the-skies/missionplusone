@@ -4,7 +4,9 @@ const syncLabel = document.querySelector('#sync-label');
 const search = document.querySelector('#search');
 const dialog = document.querySelector('#preview');
 const frame = document.querySelector('#preview-frame');
+const textPreview = document.querySelector('#text-preview');
 let files = [];
+let previewRequest = 0;
 
 function iconFor(file) {
   const type = file.mimeType || '';
@@ -39,13 +41,29 @@ function render() {
   }
 }
 function openPreview(file) {
+  const requestId = ++previewRequest;
   document.querySelector('#preview-title').textContent = file.name;
   document.querySelector('#open-drive').href = file.webViewLink || `https://drive.google.com/file/d/${encodeURIComponent(file.id)}/view`;
+  textPreview.hidden = true;
+  textPreview.textContent = '';
+  frame.hidden = false;
   frame.src = `https://drive.google.com/file/d/${encodeURIComponent(file.id)}/preview`;
   dialog.showModal();
+  fetch(`/api/file?id=${encodeURIComponent(file.id)}`, { cache: 'no-store' })
+    .then(async response => {
+      if (!response.ok) return null;
+      return response.json();
+    })
+    .then(data => {
+      if (!data || requestId !== previewRequest || !dialog.open) return;
+      textPreview.textContent = data.text;
+      textPreview.hidden = false;
+      frame.hidden = true;
+    })
+    .catch(() => {});
 }
 document.querySelector('#close-preview').addEventListener('click', () => dialog.close());
-dialog.addEventListener('close', () => { frame.src = 'about:blank'; });
+dialog.addEventListener('close', () => { previewRequest++; frame.src = 'about:blank'; textPreview.textContent = ''; });
 dialog.addEventListener('click', e => { if (e.target === dialog) dialog.close(); });
 search.addEventListener('input', render);
 async function loadFiles() {
