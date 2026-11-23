@@ -7,7 +7,8 @@ const frame = document.querySelector('#preview-frame');
 const textPreview = document.querySelector('#text-preview');
 const breadcrumbs = document.querySelector('#breadcrumbs');
 let files = [];
-let currentFolderId = new URLSearchParams(window.location.search).get('folder') || null;
+let requestedTrailIds = new URLSearchParams(window.location.search).get('path')?.split(',').filter(Boolean) || null;
+let currentFolderId = requestedTrailIds?.at(-1) || null;
 let rootFolderId = null;
 let folderTrail = [];
 let previewRequest = 0;
@@ -41,8 +42,20 @@ function renderBreadcrumbs() {
   }
 }
 function navigateTo(folderId) {
-  currentFolderId = folderId === rootFolderId ? null : folderId;
-  const nextUrl = currentFolderId ? `?folder=${encodeURIComponent(currentFolderId)}` : window.location.pathname;
+  if (folderId === rootFolderId) {
+    folderTrail = folderTrail.slice(0, 1);
+  } else {
+    const existingIndex = folderTrail.findIndex(folder => folder.id === folderId);
+    if (existingIndex >= 0) folderTrail = folderTrail.slice(0, existingIndex + 1);
+    else {
+      const selected = files.find(file => file.id === folderId && file.mimeType === 'application/vnd.google-apps.folder');
+      if (!selected) return;
+      folderTrail = [...folderTrail, { id: selected.id, name: selected.name }];
+    }
+  }
+  currentFolderId = folderTrail.at(-1)?.id || null;
+  requestedTrailIds = folderTrail.length > 1 ? folderTrail.map(folder => folder.id) : null;
+  const nextUrl = requestedTrailIds ? `?path=${encodeURIComponent(requestedTrailIds.join(','))}` : window.location.pathname;
   window.history.pushState({}, '', nextUrl);
   search.value = '';
   loadFiles();
@@ -80,7 +93,8 @@ function openPreview(file) {
   frame.hidden = false;
   frame.src = `https://drive.google.com/file/d/${encodeURIComponent(file.id)}/preview`;
   dialog.showModal();
-  fetch(`/api/file?id=${encodeURIComponent(file.id)}`, { cache: 'no-store' })
+  const trail = folderTrail.map(folder => folder.id).join(',');
+  fetch(`/api/file?id=${encodeURIComponent(file.id)}&trail=${encodeURIComponent(trail)}`, { cache: 'no-store' })
     .then(async response => response.ok ? response.json() : null)
     .then(data => {
       if (!data || requestId !== previewRequest || !dialog.open) return;
@@ -95,14 +109,17 @@ dialog.addEventListener('close', () => { previewRequest++; frame.src = 'about:bl
 dialog.addEventListener('click', e => { if (e.target === dialog) dialog.close(); });
 search.addEventListener('input', render);
 window.addEventListener('popstate', () => {
-  currentFolderId = new URLSearchParams(window.location.search).get('folder') || null;
+  requestedTrailIds = new URLSearchParams(window.location.search).get('path')?.split(',').filter(Boolean) || null;
+  currentFolderId = requestedTrailIds?.at(-1) || null;
+  if (!requestedTrailIds) folderTrail = rootFolderId ? folderTrail.slice(0, 1) : [];
   search.value = '';
   loadFiles();
 });
 async function loadFiles() {
   try {
     const endpoint = new URL('/api/files', window.location.origin);
-    if (currentFolderId) endpoint.searchParams.set('folderId', currentFolderId);
+    const trailIds = requestedTrailIds || (folderTrail.length > 1 ? folderTrail.map(folder => folder.id) : null);
+    if (trailIds) endpoint.searchParams.set('trail', trailIds.join(','));
     const response = await fetch(endpoint, { cache: 'no-store' });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Could not load the folder.');
@@ -110,16 +127,18 @@ async function loadFiles() {
     currentFolderId = data.folderId;
     rootFolderId = data.rootFolderId;
     folderTrail = data.trail || [];
+    requestedTrailIds = null;
     syncLabel.textContent = 'Synced with Drive';
     renderBreadcrumbs();
     render();
     document.querySelector('#updated-at').textContent = `Updated ${new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}`;
   } catch (error) {
-    syncLabel.textContent = 'Drive setup needed';
+    syncLabel.textContent = error.message.includes('GOOGLE_DRIVE_API_KEY') ? 'Drive setup needed' : 'Folder unavailable';
+    list.replaceChildren();
     status.hidden = false;
     status.innerHTML = '';
     const title = document.createElement('strong');
-    title.textContent = 'Connect the Drive folder';
+    title.textContent = error.message.includes('GOOGLE_DRIVE_API_KEY') ? 'Connect the Drive folder' : 'Could not open this folder';
     const detail = document.createElement('span');
     detail.textContent = error.message;
     status.append(title, detail);
